@@ -3,7 +3,7 @@
 // #include <random>
 // #include <vector>
 // #define _USE_MATH_DEFINES
-// #include <cmath>
+#include <cmath>
 // #include <chrono>
 #include <cstdlib>
 #include <unistd.h>
@@ -86,6 +86,20 @@ public:
         }
     }
 
+    void print_log() {
+        for (size_t row = row0; row < rows; row++) {
+            std::cout << row << " 0 0 [";
+            for (size_t col = 0; col <= row; col++) {
+                std::cout << (*this)[row][col];
+                if (col < row) {
+                    std::cout << ",";
+                }
+            }
+            std::cout << "]\n";
+        }
+
+    }
+
     void clip_pos() {
         T* pos = start();
         while (pos < end()) {
@@ -125,7 +139,9 @@ struct Dist2D {
         bias(bias), width(width), dist(dist), slack(slack),
         mat1(rows()+1,row0()), mat2(rows()+1,row0())
     {
-        mat1.fill(1);
+        // fill_decay_1();
+        fill_decay_2();
+        // mat1.fill(1);
         mat1.normalise();
         mat2.zero();
     }
@@ -211,42 +227,93 @@ struct Dist2D {
     double diff() {
         double ret = 0;
         double *start1 = mat1.start(), *end1 = mat1.end();
-        double *start2 = mat2.start(), *end2 = mat2.end();
+        double *start2 = mat2.start();
         while (start1 < end1) {
             double diff = (*start1++) - (*start2++);
             ret += diff * diff;
         }
         return ret;
     }
+
+    double estimate_mfpt() {
+        double p1 = p();
+        double p2 = p1 * 0.5;
+
+        double j = 0;
+
+        unsigned int row = row0() + 1;
+        double* rowc = mat1[row];
+
+        j += p2 * rowc[0];
+        for (size_t col = 1; col <= row-1; col++)
+            j += p1 * rowc[col];
+        j += p2 * rowc[row];
+
+        return 1./j;
+    }
+
+    void fill_decay_1() {
+        double t = q() / p();
+        double v = 1;
+
+        for (size_t row = row0(); row < rows(); row++) {
+            for (size_t col = 0; col <= row; col++)
+                mat1[row][col] = v;
+            v *= t;
+        }
+    }
+
+    void fill_decay_2() {
+        double t = pow(q() / p(), 0.5);
+        double v = 1;
+
+        for (size_t row = row0(); row < rows(); row++) {
+            for (size_t col = 0; col <= row; col++)
+                mat1[row][col] = v;
+            v *= t;
+        }
+    }
 };
 
 int main(int argc, char *argv[]) {
-    Dist2D dist(0.01, 1, 100, 300);
-    double target_diff = 1e-16;
+    Dist2D dist(0.01, 10, 100, 2000);
+    double target_diff = 1e-20;
 
-    dist.mat1.print(0,10);
-    for (size_t i = 0; i < 1000; i++)
-        dist.evolve();
-    dist.mat1.print(0,10);
+    while (true) {
+        for (size_t j = 0; j < 1000; j++)
+            dist.evolve();
+
+        std::cerr << dist.diff() << "\t" << dist.estimate_mfpt() << std::endl;
+    }
+
+    // dist.mat1.print(0,10);
+    // for (size_t i = 0; i < 1000; i++)
+    //     dist.evolve();
+    // dist.mat1.print(0,10);
     for (size_t i = 0; i < 1000; i++) {
         for (size_t j = 0; j < 1000; j++) {
             dist.evolve();
         }
         if (dist.diff() < target_diff)
             break;
-        std::cout << "." << std::flush;
+        std::cerr << "." << dist.diff() << std::flush;
     }
-    std::cout << dist.diff() << std::endl;
-    dist.mat1.print(0,10);
-    dist.mat1.print(60,65);
+    std::cerr << dist.diff() << std::endl;
+    std::cerr << dist.estimate_mfpt() << std::endl;
+    // dist.mat1.print(0,10);
+    // dist.mat1.print(60,65);
+
+    return 0;
+    dist.mat1.print_log();
 
     for(size_t r=0;r<=dist.rows();r++) {
         double sum = 0;
         for (size_t c=0;c<=r;c++) {
             sum += dist.mat1[r][c];
         }
-        std::cout << sum << ",";
-    }std::cout<<std::endl;
+        std::cerr << sum << ",";
+    }
+    std::cerr<<std::endl;
 
     // dist.mat1.print(dist.rows()-1,dist.rows()+1);
 
