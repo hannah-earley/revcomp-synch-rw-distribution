@@ -9,13 +9,18 @@ else
 endif
 SRCDIR=src
 OBJDIR=obj
+GFDIR=$(OBJDIR)/gf
 
 _DEPS=
 DEPS=$(patsubst %,$(SRCDIR)/%,$(_DEPS))
 _OBJ=dist.o
 OBJ=$(patsubst %,$(OBJDIR)/%,$(_OBJ))
 
-all: dist
+all: dist gf
+
+gf: $(SRCDIR)/gf.hs
+	mkdir -p $(GFDIR)
+	ghc src/gf.hs -odir $(GFDIR) -hidir $(GFDIR) -o ./gf
 
 dist: $(OBJ)
 	$(CXX) $(CXXFLAGS) $(LINKFLAGS) -o $@ $^
@@ -29,7 +34,11 @@ run: dist
 
 clean:
 	-rm -f $(OBJDIR)/*.o
+	-rm -f $(GFDIR)/*.hi
+	-rm -f $(GFDIR)/*.o
+	-rmdir $(GFDIR)
 	-rmdir $(OBJDIR)
 
 
 .PHONY: all run clean
+
