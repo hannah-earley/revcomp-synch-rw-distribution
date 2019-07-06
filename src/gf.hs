@@ -4,7 +4,8 @@ import Data.List
 ---
 
 -- main = print $ map (head.head) walk_2d_iii
-main = print fibs
+-- main = print fibs
+main = mapM_ print $ mfpt_2d 1 0.5
 
 ---
 
@@ -91,6 +92,21 @@ instance Show PQCoeff where
         showp = showx "p"
         showq = showx "q"
 
+-- pqEval :: Fractional a => PQCoeff -> a -> a
+-- pqEval p (PQCoeff cs) = sum $ zipWith go cs [0..]
+--   where
+--     q = 1 - p
+--     n = length cs - 1
+--     go c m = (fromInteger c) * (p^(n-m)) * (q^m)
+
+pqEval' p q (PQCoeff cs) = sum $ zipWith go cs [0..]
+  where
+    n = length cs - 1
+    go c m = (fromInteger c) * (p^(n-m)) * (q^m)
+
+pqEval p = pqEval' p (1-p)
+
+
 newtype XCoeff = XCoeff [PQCoeff]
 
 instance Show XCoeff where
@@ -122,6 +138,29 @@ walk_1d_iv = map XCoeff $ genwalk [z,e] go
     x' = x . x . xb
     xb = tail
     x0 = head
+
+-- mfpt_1d_iv n p = go 0 walk_1d_iv
+--   where
+--     go mfpt (XCoeff w:ws) = mfpt : go (mfpt + go' (f w !! n)) ws
+--     go' = pqEval p
+--     f = (++ repeat z)
+
+-- mfpt_1d_iv2 n p = let ms = 0 : zipWith3 go ms [0..] walk_1d_iv in ms
+--   where
+--     ev = pqEval p
+--     f = (++ repeat z)
+--     go m t (XCoeff w) = m + (t+1) * p * ev (f w !! n)
+
+genmfpt walk ev = let ms = 1 : zipWith3 go ms [0..] walk in ms
+  where
+    go m t w = m + t * ev w
+
+mfpt_1d n b = genmfpt walk_1d_iv ev
+  where
+    p = 0.5 * (1 + b)
+    ev w = p * pqEval p (ex w)
+    ex (XCoeff w) = (w ++ zs) !! n
+    zs = repeat z
 
 ------
 
@@ -164,3 +203,23 @@ walk_2d_iii = genwalk [[z,e],[e]] go
     -- y0 = pure . head
     y0' = pure . (z:) . tail . head
 
+mfpt_2d n b = genmfpt walk_2d_iii ev
+  where
+    rn = 1.0 / (fromIntegral n + 1)
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ex w = sum $ zipWith ex' w [n,n-1..0]
+    ex' w m = ef $ (w ++ zs) !! m
+    zs = repeat z
+    ev w = 0.5 * 2 * p * rn * ex w
+
+mfpt_2d_boundary n b = genmfpt walk_2d_iii ev
+  where
+    rn = 1.0 / (fromIntegral n + 1)
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ex w = ef $ (head w ++ zs) !! n
+    zs = repeat z
+    ev w = 0.5 * 2 * p * ex w

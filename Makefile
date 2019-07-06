@@ -20,7 +20,7 @@ all: dist gf
 
 gf: $(SRCDIR)/gf.hs
 	mkdir -p $(GFDIR)
-	ghc src/gf.hs -odir $(GFDIR) -hidir $(GFDIR) -o ./gf
+	ghc -O3 src/gf.hs -odir $(GFDIR) -hidir $(GFDIR) -o ./gf
 
 dist: $(OBJ)
 	$(CXX) $(CXXFLAGS) $(LINKFLAGS) -o $@ $^
@@ -39,6 +39,10 @@ clean:
 	-rmdir $(GFDIR)
 	-rmdir $(OBJDIR)
 
+edit::
+	spawn-edit-sp .
+	spawn-term .
+	open .
 
 .PHONY: all run clean
 
