@@ -1,11 +1,106 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 import Data.List
+import System.Console.GetOpt
+import System.Environment
 
 ---
 
 -- main = print $ map (head.head) walk_2d_iii
 -- main = print fibs
-main = mapM_ print $ mfpt_2d 1 0.5
+-- main = mapM_ print $ mfpt_2d 2 1
+-- main = mapM_ print $ tot_2d_boundary 0 0.99
+
+data WalkType = Walk1D | Walk2D deriving (Show)
+data Mode = GF | MFPT | Total deriving (Show)
+
+data Options = Options
+  { type_ :: WalkType
+  , mode :: Mode
+  , bias :: Double
+  , row :: Int
+  , col :: Int
+  , rowAvg :: Bool
+  , help :: Bool
+  } deriving (Show)
+
+defaultOpts :: Options
+defaultOpts = Options
+  { type_ = Walk1D
+  , mode = GF
+  , bias = 0
+  , row = 1
+  , col = 0
+  , rowAvg = True
+  , help = False
+  }
+
+options :: [OptDescr (Options -> Options)]
+options = 
+  [ Option ['1'] [] (NoArg (\opts -> opts {type_ = Walk1D})) "1D Walk"
+  , Option ['2'] [] (NoArg (\opts -> opts {type_ = Walk2D})) "2D Walk"
+  , Option ['h'] ["help"] (NoArg (\opts -> opts {help = True})) "Print this help message"
+
+  , Option ['g'] ["gf", "generating-function"] (NoArg (\opts -> opts {mode = GF}))
+        "Output the generating function"
+  , Option ['m'] ["mfpt"] (NoArg (\opts -> opts {mode = MFPT}))
+        "Output lower bound approximations to MFPT"
+  , Option ['t'] ["total"] (NoArg (\opts -> opts {mode = Total}))
+        "Output lower bound approximatinos to total probability"
+
+  , Option ['b'] ["bias"] (ReqArg (\bs opts -> opts {bias = read bs}) "bias")
+        "Set the bias, e.g. 0.01"
+  , Option ['r'] ["row"] (ReqArg (\rs opts -> opts {row = read rs}) "row")
+        "Set the row, should usually be positive"
+  , Option ['c'] ["col", "column"] (ReqArg (\cs opts -> opts {col = read cs}) "col")
+        "Set the column for 2d walks (not row averaged), should be in [0,r]"
+
+  , Option ['s'] ["single", "no-row-average"] (NoArg (\opts -> opts {rowAvg = False}))
+        "For 2D summarised modes, don't average over all columns in a row"
+  ]
+
+usage :: String -> String
+usage progn = usageInfo ("Usage: " ++ progn ++ " [options...]") options
+
+getOpts :: [String] -> Either String Options
+getOpts argv =
+  case getOpt Permute options argv of
+     (o,n,[]  ) -> Right (foldl (flip id) defaultOpts o)
+     (_,_,errs) -> Left  (concat errs)
+
+main = do
+    -- print $ usageInfo "..." options
+    argv <- getArgs
+    progn <- getProgName
+    let usage_ = usage progn
+
+    case getOpts argv of
+        Left e -> putStrLn e >> putStr usage_
+        Right o -> case o of
+            Options {help = True} -> putStr usage_
+
+            Options {mode = GF, type_ = Walk1D} -> printWalk walk_1d_iv
+            Options {mode = GF, type_ = Walk2D} -> printWalk walk_2d_iii
+
+            Options {mode = MFPT, type_ = Walk1D} ->
+                mapM_ print $ mfpt_1d (row o) (bias o)
+            Options {mode = MFPT, type_ = Walk2D, rowAvg = True} ->
+                mapM_ print $ mfpt_2d (row o) (bias o)
+            Options {mode = MFPT, type_ = Walk2D, rowAvg = False} ->
+                mapM_ print $ mfpt_2d' (row o) (col o) (bias o)
+
+            Options {mode = Total, type_ = Walk1D} ->
+                mapM_ print $ tot_1d (row o) (bias o)
+            Options {mode = Total, type_ = Walk2D, rowAvg = True} ->
+                mapM_ print $ tot_2d (row o) (bias o)
+            Options {mode = Total, type_ = Walk2D, rowAvg = False} ->
+                mapM_ print $ tot_2d' (row o) (col o) (bias o)
+
+  where
+
+    printWalk w = mapM_ putStrLn $ zipWith pwGo [0..] w
+    pwGo t x = "t^" ++ show t ++ ": " ++ show x ++ "\n"
+
+    -- let getOpt Permute options args
 
 ---
 
@@ -83,21 +178,10 @@ instance Show PQCoeff where
                    "" -> "1"
                    s  -> s
         go c m = show c ++ showpq m
-        -- go c 0 | n == 0    = show c
-        --        | otherwise = show c ++ "p^" ++ show n
-        -- go c m | m == n    = show c ++ "q^" ++ show m
-        --        | otherwise = show c ++ "p^" ++ show (n-m) ++ "q^" ++ show m
 
         showpq m = showp (n-m) ++ showq m
         showp = showx "p"
         showq = showx "q"
-
--- pqEval :: Fractional a => PQCoeff -> a -> a
--- pqEval p (PQCoeff cs) = sum $ zipWith go cs [0..]
---   where
---     q = 1 - p
---     n = length cs - 1
---     go c m = (fromInteger c) * (p^(n-m)) * (q^m)
 
 pqEval' p q (PQCoeff cs) = sum $ zipWith go cs [0..]
   where
@@ -139,23 +223,22 @@ walk_1d_iv = map XCoeff $ genwalk [z,e] go
     xb = tail
     x0 = head
 
--- mfpt_1d_iv n p = go 0 walk_1d_iv
---   where
---     go mfpt (XCoeff w:ws) = mfpt : go (mfpt + go' (f w !! n)) ws
---     go' = pqEval p
---     f = (++ repeat z)
-
--- mfpt_1d_iv2 n p = let ms = 0 : zipWith3 go ms [0..] walk_1d_iv in ms
---   where
---     ev = pqEval p
---     f = (++ repeat z)
---     go m t (XCoeff w) = m + (t+1) * p * ev (f w !! n)
-
 genmfpt walk ev = let ms = 1 : zipWith3 go ms [0..] walk in ms
   where
     go m t w = m + t * ev w
 
+gentot walk ev = let ms = 0 : zipWith go ms walk in ms
+  where
+    go m w = m + ev w
+
 mfpt_1d n b = genmfpt walk_1d_iv ev
+  where
+    p = 0.5 * (1 + b)
+    ev w = p * pqEval p (ex w)
+    ex (XCoeff w) = (w ++ zs) !! n
+    zs = repeat z
+
+tot_1d n b = gentot walk_1d_iv ev
   where
     p = 0.5 * (1 + b)
     ev w = p * pqEval p (ex w)
@@ -187,7 +270,7 @@ walk_2d_iii = genwalk [[z,e],[e]] go
   where
     go w = mmap (p*) (x' w + y' w)
          + mmap (q*) (xb w + yb w)
-         + mmap (p*) (x0 w + y0' w)
+         + mmap (p*) (x0 w + y0 w)
     mmap = map . map
 
     w' ((_:xs):ys) = ((z:xs):ys)
@@ -200,8 +283,9 @@ walk_2d_iii = genwalk [[z,e],[e]] go
     y = ([]:)
     yb = tail
     y' = y . w'
-    -- y0 = pure . head
-    y0' = pure . (z:) . tail . head
+    y0 = pure . head
+    -- y0' = pure . (z:) . tail . head
+    -- y0' ((x0:xs):ys) = [z:xs]
 
 mfpt_2d n b = genmfpt walk_2d_iii ev
   where
@@ -214,12 +298,51 @@ mfpt_2d n b = genmfpt walk_2d_iii ev
     zs = repeat z
     ev w = 0.5 * 2 * p * rn * ex w
 
-mfpt_2d_boundary n b = genmfpt walk_2d_iii ev
+mfpt_2d' n m b = genmfpt walk_2d_iii ev
+  where
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ex w = ef $ (((w ++ es) !! m) ++ zs) !! (n-m)
+    zs = repeat z
+    es = repeat []
+    ev w = 0.5 * 2 * p * ex w
+
+tot_2d n b = gentot walk_2d_iii ev
   where
     rn = 1.0 / (fromIntegral n + 1)
     p = 0.25 * (1 + b)
     q = 0.5 - p
     ef = pqEval' p q
-    ex w = ef $ (head w ++ zs) !! n
+    ex w = sum $ zipWith ex' w [n,n-1..0]
+    ex' w m = ef $ (w ++ zs) !! m
     zs = repeat z
+    ev w = 0.5 * 2 * p * rn * ex w
+
+tot_2d' n m b = gentot walk_2d_iii ev
+  where
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ex w = ef $ (((w ++ es) !! m) ++ zs) !! (n-m)
+    zs = repeat z
+    es = repeat []
     ev w = 0.5 * 2 * p * ex w
+
+-- mfpt_2d_boundary n b = genmfpt walk_2d_iii ev
+--   where
+--     p = 0.25 * (1 + b)
+--     q = 0.5 - p
+--     ef = pqEval' p q
+--     ex w = ef $ (head w ++ zs) !! n
+--     zs = repeat z
+--     ev w = 0.5 * 2 * p * ex w
+
+-- tot_2d_boundary n b = gentot walk_2d_iii ev
+--   where
+--     p = 0.25 * (1 + b)
+--     q = 0.5 - p
+--     ef = pqEval' p q
+--     ex w = ef $ (head w ++ zs) !! n
+--     zs = repeat z
+--     ev w = 0.5 * 2 * p * ex w
