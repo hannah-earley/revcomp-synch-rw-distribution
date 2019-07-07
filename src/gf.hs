@@ -5,7 +5,7 @@ import System.Environment
 
 ---
 
-data WalkType = Walk1D | Walk2D deriving (Show)
+data WalkType = Walk1D | Walk2D | Walk2D' Int deriving (Show)
 data Mode = GF | MFPT | Total deriving (Show)
 
 data Options = Options
@@ -33,6 +33,8 @@ options :: [OptDescr (Options -> Options)]
 options = 
   [ Option ['1'] [] (NoArg (\opts -> opts {type_ = Walk1D})) "1D Walk"
   , Option ['2'] [] (NoArg (\opts -> opts {type_ = Walk2D})) "2D Walk"
+  , Option ['3'] [] (ReqArg (\ws opts -> opts {type_ = Walk2D' (read ws)}) "width")
+        "2D quadrant walk with specified constriction width"
   , Option ['h'] ["help"] (NoArg (\opts -> opts {help = True})) "Print this help message"
 
   , Option ['g'] ["gf", "generating-function"] (NoArg (\opts -> opts {mode = GF}))
@@ -63,7 +65,6 @@ getOpts argv =
      (_,_,errs) -> Left  (concat errs)
 
 main = do
-    -- print $ usageInfo "..." options
     argv <- getArgs
     progn <- getProgName
     let usage_ = usage progn
@@ -75,20 +76,36 @@ main = do
 
             Options {mode = GF, type_ = Walk1D} -> printWalk walk_1d_iv
             Options {mode = GF, type_ = Walk2D} -> printWalk walk_2d_iii
+            Options {mode = GF, type_ = Walk2D' w} -> printWalk (walk_2d' w)
 
             Options {mode = MFPT, type_ = Walk1D} ->
                 mapM_ print $ mfpt_1d (row o) (bias o)
             Options {mode = MFPT, type_ = Walk2D, rowAvg = True} ->
                 mapM_ print $ mfpt_2d (row o) (bias o)
             Options {mode = MFPT, type_ = Walk2D, rowAvg = False} ->
-                mapM_ print $ mfpt_2d' (row o) (col o) (bias o)
+                mapM_ print $ mfpt_2d_s (row o) (col o) (bias o)
+            Options {mode = MFPT, type_ = Walk2D' w, rowAvg = True} ->
+                mapM_ print $ mfpt_2d' w (row o) (bias o)
+            Options {mode = MFPT, type_ = Walk2D' w, rowAvg = False} ->
+                mapM_ print $ mfpt_2d'_s w (row o) (col o) (bias o)
 
             Options {mode = Total, type_ = Walk1D} ->
                 mapM_ print $ tot_1d (row o) (bias o)
             Options {mode = Total, type_ = Walk2D, rowAvg = True} ->
                 mapM_ print $ tot_2d (row o) (bias o)
             Options {mode = Total, type_ = Walk2D, rowAvg = False} ->
-                mapM_ print $ tot_2d' (row o) (col o) (bias o)
+                mapM_ print $ tot_2d_s (row o) (col o) (bias o)
+            Options {mode = Total, type_ = Walk2D' w, rowAvg = True} ->
+                mapM_ print $ tot_2d' w (row o) (bias o)
+            Options {mode = Total, type_ = Walk2D' w, rowAvg = False} ->
+                mapM_ print $ tot_2d'_s w (row o) (col o) (bias o)
+
+            -- _ -> do
+            --     putStrLn "Option set unimplemented..."
+            --     putStr "Got: "
+            --     print o
+            --     putStrLn ""
+            --     putStr usage_
 
   where
 
@@ -295,7 +312,7 @@ mfpt_2d n b = genmfpt walk_2d_iii ev
     zs = repeat z
     ev w = 0.5 * 2 * p * rn * ex w
 
-mfpt_2d' n m b = genmfpt walk_2d_iii ev
+mfpt_2d_s n m b = genmfpt walk_2d_iii ev
   where
     p = 0.25 * (1 + b)
     q = 0.5 - p
@@ -316,7 +333,7 @@ tot_2d n b = gentot walk_2d_iii ev
     zs = repeat z
     ev w = 0.5 * 2 * p * rn * ex w
 
-tot_2d' n m b = gentot walk_2d_iii ev
+tot_2d_s n m b = gentot walk_2d_iii ev
   where
     p = 0.25 * (1 + b)
     q = 0.5 - p
@@ -325,3 +342,85 @@ tot_2d' n m b = gentot walk_2d_iii ev
     zs = repeat z
     es = repeat []
     ev w = 0.5 * 2 * p * ex w
+
+---
+
+walk_2d' width
+    | width <= 0 = error "error! constriction width must be positibe"
+    | otherwise  = genwalk eps go
+  where
+    p2 = p + p
+    eps0 = replicate width z
+    eps1 = [p] ++ replicate (width-1) p2 ++ [p]
+    eps = [eps0, eps1]
+
+    go w = mp (rd' w + rc' w)
+         + mq (rcb w + rdb w)
+         + mp (c0' w + d0' w)
+         + mp (r0 w + r0 w)
+
+    mmap = map . map
+    mp = mmap (p*)
+    mq = mmap (q*)
+
+    w' (_:rs) = eps0:rs
+
+    c = map (z:)
+    cb = map tail
+    c0 = map (pure . head)
+    c0' = c0 . w'
+
+    d = map (++[z])
+    db = map init
+    d0 = map (\row -> dgo (tail row) (last row))
+    dgo xs x = map (const z) xs ++ [x]
+    d0' = d0 . w'
+
+    r = (eps0:)
+    rb = tail
+    r0 = pure . head
+
+    rc' = r . c . w'
+    rd' = r . d . w'
+    rcb = rb . cb
+    rdb = rb . db
+
+mfpt_2d' width n b = genmfpt (walk_2d' width) ev
+  where
+    n' = n - (width-1)
+    rn = 1.0 / (fromIntegral n + 1)
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ex w = sum . map ef $ (w ++ zs) !! n'
+    zs = repeat []
+    ev w = rn * ex w
+
+mfpt_2d'_s width n m b = genmfpt (walk_2d' width) ev
+  where
+    n' = n - (width-1)
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ev w = ef $ ((w ++ zs) !! n') !! m
+    zs = repeat (repeat z)
+
+tot_2d' width n b = gentot (walk_2d' width) ev
+  where
+    n' = n - (width-1)
+    rn = 1.0 / (fromIntegral n + 1)
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ex w = sum . map ef $ (w ++ zs) !! n'
+    zs = repeat []
+    ev w = rn * ex w
+
+tot_2d'_s  width n m b = gentot (walk_2d' width) ev
+  where
+    n' = n - (width-1)
+    p = 0.25 * (1 + b)
+    q = 0.5 - p
+    ef = pqEval' p q
+    ev w = ef $ ((w ++ zs) !! n') !! m
+    zs = repeat (repeat z)
