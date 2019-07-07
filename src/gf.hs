@@ -5,11 +5,6 @@ import System.Environment
 
 ---
 
--- main = print $ map (head.head) walk_2d_iii
--- main = print fibs
--- main = mapM_ print $ mfpt_2d 2 1
--- main = mapM_ print $ tot_2d_boundary 0 0.99
-
 data WalkType = Walk1D | Walk2D deriving (Show)
 data Mode = GF | MFPT | Total deriving (Show)
 
@@ -107,6 +102,8 @@ main = do
 fibs = 1 : 1 : zipWith (+) fibs (tail fibs)
 
 facs = 1 : zipWith (*) facs [1..]
+
+---
 
 zipFull two one = go
   where
@@ -328,21 +325,3 @@ tot_2d' n m b = gentot walk_2d_iii ev
     zs = repeat z
     es = repeat []
     ev w = 0.5 * 2 * p * ex w
-
--- mfpt_2d_boundary n b = genmfpt walk_2d_iii ev
---   where
---     p = 0.25 * (1 + b)
---     q = 0.5 - p
---     ef = pqEval' p q
---     ex w = ef $ (head w ++ zs) !! n
---     zs = repeat z
---     ev w = 0.5 * 2 * p * ex w
-
--- tot_2d_boundary n b = gentot walk_2d_iii ev
---   where
---     p = 0.25 * (1 + b)
---     q = 0.5 - p
---     ef = pqEval' p q
---     ex w = ef $ (head w ++ zs) !! n
---     zs = repeat z
---     ev w = 0.5 * 2 * p * ex w
