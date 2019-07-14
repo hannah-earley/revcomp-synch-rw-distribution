@@ -52,7 +52,7 @@ options =
         "Set the column for 2d walks (not row averaged), should be in [0,r]"
 
   , Option ['s'] ["single", "no-row-average"] (NoArg (\opts -> opts {rowAvg = False}))
-        "For 2D summarised modes, don't average over all columns in a row"
+        "For 2D summarised modes, don't average over all columns in a row. For GF modes, print a single entry."
   ]
 
 usage :: String -> String
@@ -73,6 +73,10 @@ main = do
         Left e -> putStrLn e >> putStr usage_
         Right o -> case o of
             Options {help = True} -> putStr usage_
+
+            Options {mode = GF, type_ = Walk1D, rowAvg = False} -> printWalk $ map (get1 (row o)) walk_1d_iv
+            Options {mode = GF, type_ = Walk2D, rowAvg = False} -> printWalk $ map (get2 (row o) (col o)) walk_2d_iii
+            Options {mode = GF, type_ = Walk2D' w, rowAvg = False} -> printWalk $ map (get2' (row o) (col o)) (walk_2d' w)
 
             Options {mode = GF, type_ = Walk1D} -> printWalk walk_1d_iv
             Options {mode = GF, type_ = Walk2D} -> printWalk walk_2d_iii
@@ -111,6 +115,12 @@ main = do
 
     printWalk w = mapM_ putStrLn $ zipWith pwGo [0..] w
     pwGo t x = "t^" ++ show t ++ ": " ++ show x ++ "\n"
+
+    get1 r (XCoeff w) = (w ++ xs) !! r
+    get2 r c = get2' (r-c) c
+    get2' r c w = (((w ++ xss) !! r) ++ xs) !! c
+    xss = repeat []
+    xs = repeat 0
 
     -- let getOpt Permute options args
 
