@@ -16,8 +16,19 @@
 // #include "pcg/pcg_random.hpp"
 // #include "walk.hpp"
 
+bool VERBOSE_MODE = false;
+
 size_t triangle(size_t n) {
     return (n * (n + 1)) >> 1;
+}
+
+unsigned stou(std::string const& str, size_t* idx=0, int base=10);
+unsigned stou(std::string const& str, size_t* idx, int base) {
+    unsigned long result = std::stoul(str, idx, base);
+    if (result > std::numeric_limits<unsigned>::max()) {
+        throw std::out_of_range("stou");
+    }
+    return result;
 }
 
 template<typename T>
@@ -275,50 +286,82 @@ struct Dist2D {
     }
 };
 
+void help(int argc, char *argv[]) {
+    char progn_def[] = "./dist";
+    char *progn = progn_def;
+    if (argc > 0) progn = argv[0];
+
+    fprintf(stderr, "Usage: %s [options]\n", progn);
+    // fprintf(stderr, "    -2           Compute 2D walk MFPT\n");
+    fprintf(stderr, "    -h           Print this help message\n");
+    // fprintf(stderr, "    -v           Verbose/debug mode\n");
+    fprintf(stderr, "    -b bias      Biased walk, bias \\in [-1,1]\n");
+    fprintf(stderr, "    -d distance  Starting point, [nat]\n");
+    fprintf(stderr, "    -w width     Constriction width (2D only), [nat]\n");
+    fprintf(stderr, "    -x rows      Excess row count, [nat]\n");
+    fprintf(stderr, "    -s window    Sample time window, [nat]\n");
+}
+
 int main(int argc, char *argv[]) {
-    Dist2D dist(0.01, 10, 100, 2000);
-    double target_diff = 1e-20;
+    std::cout.precision(17);
+    std::cerr.precision(17);
 
-    while (true) {
-        for (size_t j = 0; j < 1000; j++)
-            dist.evolve();
+    double bias = 1;
+    unsigned int width = 1;
+    unsigned int distance = 1;
+    unsigned int slack = 250;
+    unsigned int every = 1000;
+    // Dist2D dist;
 
-        std::cerr << dist.diff() << "\t" << dist.estimate_mfpt() << std::endl;
-    }
-
-    // dist.mat1.print(0,10);
-    // for (size_t i = 0; i < 1000; i++)
-    //     dist.evolve();
-    // dist.mat1.print(0,10);
-    for (size_t i = 0; i < 1000; i++) {
-        for (size_t j = 0; j < 1000; j++) {
-            dist.evolve();
-        }
-        if (dist.diff() < target_diff)
+    int c;
+    while ((c = getopt(argc, argv, "hb:d:w:x:s:")) != -1) switch(c) {
+        case 'b':
+            bias = std::stod(optarg);
+            if (bias < -1 || bias > 1) {
+                std::cerr << "Bias outside range..\n\n";
+                goto help;
+            }
             break;
-        std::cerr << "." << dist.diff() << std::flush;
+        case 'd':
+            distance = stou(optarg);
+            if (distance > 2147483647) { 
+                std::cerr << "Distance outside range..\n\n";
+                goto help;
+            }
+            break;
+        case 'w':
+            width = stou(optarg);
+            break;
+        case 'x':
+            slack = std::stoul(optarg);
+            break;
+        case 's':
+            every = std::stoul(optarg);
+            break;
+
+        // case 'v':
+        //     VERBOSE_MODE = true;
+        //     break;
+        case 'h':
+        case '?':
+        default:
+            goto help;
     }
-    std::cerr << dist.diff() << std::endl;
-    std::cerr << dist.estimate_mfpt() << std::endl;
-    // dist.mat1.print(0,10);
-    // dist.mat1.print(60,65);
 
-    return 0;
-    dist.mat1.print_log();
-
-    for(size_t r=0;r<=dist.rows();r++) {
-        double sum = 0;
-        for (size_t c=0;c<=r;c++) {
-            sum += dist.mat1[r][c];
+    // run simulation
+    {
+        Dist2D dist(bias, width, distance, slack);
+        while (true) {
+            for (size_t j = 0; j < every; j++)
+                dist.evolve();
+    
+            std::cerr << dist.diff() << "\t" << dist.estimate_mfpt() << std::endl;
         }
-        std::cerr << sum << ",";
     }
-    std::cerr<<std::endl;
-
-    // dist.mat1.print(dist.rows()-1,dist.rows()+1);
-
-    // std::cout << mat1[3][4];
-    // mat1[3][4] += 7;
 
     return 0;
+
+help:
+    help(argc, argv);
+    return 1;
 }
