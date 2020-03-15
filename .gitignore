@@ -4,3 +4,4 @@ gf
 .DS_Store
 *.swp
 __pycache__
+data/*
